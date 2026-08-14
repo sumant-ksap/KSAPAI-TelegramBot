@@ -1,15 +1,17 @@
+# This bot reuses the existing free-tier `travelagent-db` Postgres instance
+# (Render allows only one active free-tier database per account), so no
+# `databases:` block here - POSTGRES_DSN is filled in manually in the Render
+# dashboard from that database's connection string. Its `messages` table is
+# already taken by the TravelAgent bot, so this bot uses `ksapai_messages`
+# instead (see db.py) - keeps the two bots' conversation histories isolated
+# even though Telegram private-chat IDs are shared across bots for the same
+# user.
+#
 # Free-tier setup: $0/mo on Render, with real tradeoffs (see the README's
-# "Deploying to Render" section) - the free Postgres wipes all data after 30
-# days, and the free Web Service sleeps after 15 min idle unless something
-# pings it. To upgrade to an always-on paid setup later, change the service's
-# `type` to `worker` and `plan` to `starter`, and the database's `plan` to
-# something like `basic-256mb` (a worker needs no healthCheckPath/PORT).
-databases:
-  - name: ksapai-support-db
-    plan: free
-    databaseName: ksapai_support
-    user: ksapai
-
+# "Deploying to Render" section) - the free Web Service sleeps after 15 min
+# idle unless something pings it. To upgrade to an always-on paid setup
+# later, change the service's `type` to `worker` and `plan` to `starter`
+# (a worker needs no healthCheckPath/PORT).
 services:
   - type: web
     name: ksapai-desktop-support-bot
@@ -30,6 +32,4 @@ services:
       - key: HISTORY_LIMIT
         value: "20"
       - key: POSTGRES_DSN
-        fromDatabase:
-          name: ksapai-support-db
-          property: connectionString
+        sync: false

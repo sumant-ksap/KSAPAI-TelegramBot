@@ -1,14 +1,14 @@
 import asyncpg
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS messages (
+CREATE TABLE IF NOT EXISTS ksapai_messages (
     id BIGSERIAL PRIMARY KEY,
     chat_id BIGINT NOT NULL,
     role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
     content TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS messages_chat_id_created_at_idx ON messages (chat_id, created_at);
+CREATE INDEX IF NOT EXISTS ksapai_messages_chat_id_created_at_idx ON ksapai_messages (chat_id, created_at);
 """
 
 
@@ -28,7 +28,7 @@ class Memory:
 
     async def add_message(self, chat_id: int, role: str, content: str) -> None:
         await self._pool.execute(
-            "INSERT INTO messages (chat_id, role, content) VALUES ($1, $2, $3)",
+            "INSERT INTO ksapai_messages (chat_id, role, content) VALUES ($1, $2, $3)",
             chat_id,
             role,
             content,
@@ -38,7 +38,7 @@ class Memory:
         rows = await self._pool.fetch(
             """
             SELECT role, content FROM (
-                SELECT role, content, created_at FROM messages
+                SELECT role, content, created_at FROM ksapai_messages
                 WHERE chat_id = $1
                 ORDER BY created_at DESC
                 LIMIT $2
@@ -51,4 +51,4 @@ class Memory:
         return [{"role": row["role"], "content": row["content"]} for row in rows]
 
     async def reset(self, chat_id: int) -> None:
-        await self._pool.execute("DELETE FROM messages WHERE chat_id = $1", chat_id)
+        await self._pool.execute("DELETE FROM ksapai_messages WHERE chat_id = $1", chat_id)

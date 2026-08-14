@@ -64,14 +64,23 @@ to confirm the cloud endpoint responds the way you expect.
 
 ### Steps
 
+This bot reuses the existing free-tier `travelagent-db` Postgres database rather than provisioning
+its own - Render allows only one active free-tier database per account, and that one's already
+spoken for by the TravelAgent bot. Its `messages` table name was already taken, so this bot creates
+its own `ksapai_messages` table instead (see [db.py](db.py)) - the two bots' conversation histories
+stay isolated even though Telegram private-chat IDs are shared across bots for the same user.
+
 1. Push this repo to GitHub, and generate an Ollama Cloud API key.
-2. In the Render dashboard: **New > Blueprint**, and point it at this repo - it reads
-   [render.yaml](render.yaml) and provisions the web service and free database together.
-3. Fill in the `sync: false` secrets it prompts for: `TELEGRAM_BOT_TOKEN` and `OLLAMA_API_KEY`.
-   `POSTGRES_DSN` is wired automatically from the provisioned database.
-4. Deploy. Check the logs for `Bot started, polling for updates` with no errors.
-5. Message the bot on Telegram to confirm it replies.
-6. Set up a free external uptime pinger (e.g. [UptimeRobot](https://uptimerobot.com),
+2. In the Render dashboard, open the `travelagent-db` database and copy its **External Database
+   URL** (Internal URL only works for services in the same Render project/region - use External
+   unless this service ends up in that same project).
+3. **New > Blueprint**, and point it at this repo - it reads [render.yaml](render.yaml) and
+   provisions just the web service (no database block, since we're reusing one).
+4. Fill in the `sync: false` secrets it prompts for: `TELEGRAM_BOT_TOKEN`, `OLLAMA_API_KEY`, and
+   `POSTGRES_DSN` (the External Database URL you copied in step 2).
+5. Deploy. Check the logs for `Bot started, polling for updates` with no errors.
+6. Message the bot on Telegram to confirm it replies.
+7. Set up a free external uptime pinger (e.g. [UptimeRobot](https://uptimerobot.com),
    [cron-job.org](https://cron-job.org)) against the service's `.onrender.com` URL every ~10
    minutes - see the free-tier tradeoffs below for why.
 
@@ -87,22 +96,24 @@ to confirm the cloud endpoint responds the way you expect.
 - Free Web Services **sleep after 15 minutes with no HTTP request** - and Telegram polling doesn't
   count as one. Any message that arrives while asleep waits ~30-60s for a cold start before it's
   even seen. The uptime pinger above is a workaround, not a real fix.
-- Free Postgres **deletes all data after 30 days** - conversation history will periodically vanish,
-  and you'll need to create a fresh free database and update `POSTGRES_DSN` in the Render dashboard
-  each time (Render emails a warning first). Since this bot has no long-lived state beyond recent
-  chat history, that's low-stakes here.
+- Free Postgres **deletes all data after 30 days**. This applies to the shared `travelagent-db`
+  itself, not something this blueprint provisions - when Render wipes and you recreate that
+  database, update `POSTGRES_DSN` here (and in the TravelAgent service) to its new connection
+  string. Since this bot has no long-lived state beyond recent chat history, that's low-stakes.
 
 ### Paid (~$13/mo) always-on setup
 
 Once you've validated it and want something reliable for real users, switch to a **Background
-Worker** (no sleep, no health-check hack needed) and a **paid Postgres** (no 30-day wipe): in
-`render.yaml`, change the service's `type` to `worker` and `plan` to `starter` (and drop
-`healthCheckPath`), and the database's `plan` to e.g. `basic-256mb`.
+Worker** (no sleep, no health-check hack needed): in `render.yaml`, change the service's `type` to
+`worker` and `plan` to `starter` (and drop `healthCheckPath`). If `travelagent-db` is still on the
+free plan at that point, also upgrade it to a paid plan (e.g. `basic-256mb`) so this bot's history
+doesn't get wiped every 30 days either - both bots share it, so that upgrade benefits both.
 
-**Cost**: Background Worker Starter $7/mo + Postgres Basic-256mb $6/mo ~= **$13/mo**, plus your
-Ollama Cloud plan. Ollama Cloud's Free tier allows only 1 concurrent model/light usage on a 5-hour
-session / 7-day rolling cap - fine for trying this out, but real multi-user traffic will likely need
-**Pro ($20/mo, 3 concurrent)** to avoid throttling.
+**Cost**: Background Worker Starter $7/mo + Postgres Basic-256mb $6/mo (shared with TravelAgent)
+~= **$13/mo total across both bots**, plus your Ollama Cloud plan. Ollama Cloud's Free tier allows
+only 1 concurrent model/light usage on a 5-hour session / 7-day rolling cap - fine for trying this
+out, but real multi-user traffic across both bots will likely need **Pro ($20/mo, 3 concurrent)** to
+avoid throttling.
 
 ## Security note
 
